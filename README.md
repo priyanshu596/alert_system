@@ -12,9 +12,9 @@ A professional AI-powered CCTV surveillance demo with real-time person detection
 ## 📋 Features
 
 ### 🖼️ Screenshots
-| Detection Alert | Event Monitoring |
-| :---: | :---: |
-| ![Detection Alert](snapshots/alert_20260415_001836.jpg) | ![Event Monitoring](snapshots/alert_20260415_001857.jpg) |
+| Detection Alert | Event Monitoring | Telegram Alert |
+| :---: | :---: | :---: |
+| ![Detection Alert](snapshots/alert_20260415_001836.jpg) | ![Event Monitoring](snapshots/alert_20260415_001857.jpg) | ![Telegram Alert](snapshots/Screenshot_2026-04-15_20_21_38.png) |
 
 ### 🧠 AI Detection
 - **YOLOv8 Nano** for real-time person detection

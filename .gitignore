@@ -15,6 +15,7 @@ snapshots/*
 # We want to keep a couple of snapshots for the README
 !snapshots/alert_20260415_001836.jpg
 !snapshots/alert_20260415_001857.jpg
+!snapshots/Screenshot_2026-04-15_20_21_38.png
 
 # Video and compressed files
 *.mkv
