@@ -1,0 +1,15 @@
+# AI CCTV Surveillance System - Dependencies
+# Install with: pip install -r requirements.txt
+
+# Core ML/Detection
+ultralytics>=8.0.0      # YOLOv8 object detection
+opencv-python>=4.8.0    # Computer vision & video processing
+numpy>=1.24.0           # Numerical operations
+
+# Web Framework
+flask>=3.0.0            # Web server & API
+requests>=2.31.0        # HTTP requests for WhatsApp API
+
+# Audio (optional - for alarm sound)
+# Note: Uses system audio players (aplay/paplay/afplay/winsound)
+# No additional Python packages needed

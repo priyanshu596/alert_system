@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI CCTV Surveillance System | Security Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="header-left">
+            <div class="logo">
+                <i class="fas fa-shield-halved"></i>
+                <span>SecureVision AI</span>
+            </div>
+            <span class="subtitle">Intelligent Surveillance System</span>
+        </div>
+        <div class="header-center">
+            <div class="status-badge" id="system-status">
+                <i class="fas fa-circle"></i>
+                <span>SYSTEM INITIALIZING...</span>
+            </div>
+        </div>
+        <div class="header-right">
+            <div class="datetime" id="datetime"></div>
+            <div class="fps-counter">
+                <i class="fas fa-gauge-high"></i>
+                <span id="fps-value">--</span> FPS
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Dashboard -->
+    <main class="dashboard">
+        <!-- Left Column: Video Feed -->
+        <section class="video-section">
+            <div class="panel-header">
+                <h2><i class="fas fa-video"></i> Live Camera Feed</h2>
+                <div class="live-indicator" id="live-indicator">
+                    <span class="live-dot"></span>
+                    LIVE
+                </div>
+            </div>
+            <div class="video-container" id="video-container">
+                <img src="{{ url_for('video_feed') }}" alt="Live Video Feed" id="video-feed">
+                <div class="alert-overlay" id="alert-overlay">
+                    <div class="alert-icon">
+                        <i class="fas fa-triangle-exclamation"></i>
+                    </div>
+                    <h2>⚠ ALERT TRIGGERED ⚠</h2>
+                    <p>Person detected in restricted zone!</p>
+                </div>
+            </div>
+            <div class="video-info">
+                <div class="info-item">
+                    <i class="fas fa-crosshairs"></i>
+                    <span>Zone: Shop Shutter Area</span>
+                </div>
+                <div class="info-item">
+                    <i class="fas fa-robot"></i>
+                    <span>AI: YOLOv8 Nano</span>
+                </div>
+                <div class="info-item">
+                    <i class="fas fa-bullseye"></i>
+                    <span>Class: Person Only</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Right Column: Status & Events -->
+        <section class="sidebar">
+            <!-- Status Panel -->
+            <div class="panel status-panel">
+                <div class="panel-header">
+                    <h2><i class="fas fa-chart-line"></i> System Status</h2>
+                </div>
+                <div class="status-grid">
+                    <div class="status-item">
+                        <div class="status-label">
+                            <i class="fas fa-wave-square"></i>
+                            <span>Motion Detection</span>
+                        </div>
+                        <div class="status-value alert" id="motion-status">STANDBY</div>
+                    </div>
+                    <div class="status-item">
+                        <div class="status-label">
+                            <i class="fas fa-brain"></i>
+                            <span>AI Engine</span>
+                        </div>
+                        <div class="status-value loading" id="ai-status">LOADING...</div>
+                    </div>
+                    <div class="status-item">
+                        <div class="status-label">
+                            <i class="fas fa-bell"></i>
+                            <span>Alert System</span>
+                        </div>
+                        <div class="status-value active" id="alert-system-status">ACTIVE</div>
+                    </div>
+                    <div class="status-item">
+                        <div class="status-label">
+                            <i class="fas fa-clock"></i>
+                            <span>Last Alert</span>
+                        </div>
+                        <div class="status-value" id="last-alert-time">None</div>
+                    </div>
+                    <div class="status-item">
+                        <div class="status-label">
+                            <i class="fas fa-fire"></i>
+                            <span>Total Alerts</span>
+                        </div>
+                        <div class="status-value" id="total-alerts">0</div>
+                    </div>
+                    <div class="status-item">
+                        <div class="status-label">
+                            <i class="fas fa-hourglass-half"></i>
+                            <span>Cooldown</span>
+                        </div>
+                        <div class="status-value" id="cooldown-status">Ready</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Latest Snapshot -->
+            <div class="panel snapshot-panel">
+                <div class="panel-header">
+                    <h2><i class="fas fa-camera"></i> Latest Alert Snapshot</h2>
+                </div>
+                <div class="snapshot-container" id="snapshot-container">
+                    <img src="" alt="No snapshots yet" id="latest-snapshot" class="snapshot-placeholder">
+                    <div class="snapshot-placeholder-text" id="snapshot-placeholder-text">
+                        <i class="fas fa-image"></i>
+                        <p>No alert snapshots yet</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Event Log -->
+            <div class="panel event-panel">
+                <div class="panel-header">
+                    <h2><i class="fas fa-list-ul"></i> Event Log</h2>
+                    <button class="btn-clear" onclick="clearEvents()" title="Clear events">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
+                <div class="event-log" id="event-log">
+                    <div class="event-placeholder">
+                        <i class="fas fa-clock-rotate-left"></i>
+                        <p>Waiting for events...</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quick Actions -->
+            <div class="panel actions-panel">
+                <div class="panel-header">
+                    <h2><i class="fas fa-gamepad"></i> Quick Actions</h2>
+                </div>
+                <div class="actions-grid">
+                    <button class="btn-action" onclick="testAlert()">
+                        <i class="fas fa-bell"></i>
+                        <span>Test Alert</span>
+                    </button>
+                    <button class="btn-action" onclick="refreshStatus()">
+                        <i class="fas fa-arrows-rotate"></i>
+                        <span>Refresh Status</span>
+                    </button>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="footer-left">
+            <i class="fas fa-code"></i>
+            <span>AI CCTV Surveillance System v1.0</span>
+        </div>
+        <div class="footer-center">
+            <span>Powered by YOLOv8 + Flask + OpenCV</span>
+        </div>
+        <div class="footer-right">
+            <span>© 2026 SecureVision AI</span>
+        </div>
+    </footer>
+
+    <!-- JavaScript -->
+    <script>
+        // Update datetime
+        function updateDateTime() {
+            const now = new Date();
+            const options = { 
+                weekday: 'short', 
+                year: 'numeric', 
+                month: 'short', 
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            };
+            document.getElementById('datetime').textContent = now.toLocaleDateString('en-US', options);
+        }
+        setInterval(updateDateTime, 1000);
+        updateDateTime();
+
+        // Fetch system status periodically
+        async function fetchStatus() {
+            try {
+                const response = await fetch('/api/status');
+                const data = await response.json();
+
+                // Update system status badge
+                const statusBadge = document.getElementById('system-status');
+                if (data.system_running && data.detector_ready) {
+                    statusBadge.className = 'status-badge active';
+                    statusBadge.innerHTML = '<i class="fas fa-circle"></i><span>SYSTEM ONLINE</span>';
+                } else {
+                    statusBadge.className = 'status-badge loading';
+                    statusBadge.innerHTML = '<i class="fas fa-circle"></i><span>SYSTEM INITIALIZING...</span>';
+                }
+
+                // Update FPS
+                document.getElementById('fps-value').textContent = data.fps || '--';
+
+                // Update AI status
+                const aiStatus = document.getElementById('ai-status');
+                if (data.detector_ready) {
+                    aiStatus.textContent = 'LIVE';
+                    aiStatus.className = 'status-value active';
+                }
+
+                // Update alert active status
+                const motionStatus = document.getElementById('motion-status');
+                if (data.alert_active) {
+                    motionStatus.textContent = 'ALERT!';
+                    motionStatus.className = 'status-value alert pulse';
+                } else {
+                    motionStatus.textContent = 'MONITORING';
+                    motionStatus.className = 'status-value active';
+                }
+
+                // Update alert overlay
+                const alertOverlay = document.getElementById('alert-overlay');
+                if (data.alert_active) {
+                    alertOverlay.classList.add('visible');
+                } else {
+                    alertOverlay.classList.remove('visible');
+                }
+
+                // Update alert stats
+                const alertStatus = data.alert_status;
+                document.getElementById('total-alerts').textContent = alertStatus.total_alerts || 0;
+                document.getElementById('last-alert-time').textContent = alertStatus.last_alert_time || 'None';
+                
+                const cooldownStatus = document.getElementById('cooldown-status');
+                if (alertStatus.cooldown_active) {
+                    cooldownStatus.textContent = alertStatus.cooldown_remaining;
+                    cooldownStatus.className = 'status-value warning';
+                } else {
+                    cooldownStatus.textContent = 'Ready';
+                    cooldownStatus.className = 'status-value active';
+                }
+
+                // Update event log
+                updateEventLog(data.recent_events);
+
+                // Update latest snapshot
+                if (data.latest_snapshot) {
+                    const snapshotImg = document.getElementById('latest-snapshot');
+                    const placeholderText = document.getElementById('snapshot-placeholder-text');
+                    snapshotImg.src = data.latest_snapshot;
+                    snapshotImg.style.display = 'block';
+                    placeholderText.style.display = 'none';
+                }
+
+            } catch (error) {
+                console.error('Error fetching status:', error);
+            }
+        }
+
+        // Update event log
+        function updateEventLog(events) {
+            const eventLog = document.getElementById('event-log');
+            
+            if (!events || events.length === 0) {
+                eventLog.innerHTML = `
+                    <div class="event-placeholder">
+                        <i class="fas fa-clock-rotate-left"></i>
+                        <p>Waiting for events...</p>
+                    </div>
+                `;
+                return;
+            }
+
+            eventLog.innerHTML = events.map(event => {
+                const typeClass = event.type || 'info';
+                const icon = getEventIcon(event.type);
+                return `
+                    <div class="event-item ${typeClass}">
+                        <div class="event-icon">${icon}</div>
+                        <div class="event-content">
+                            <div class="event-message">${event.message}</div>
+                            <div class="event-time">${event.timestamp}</div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // Get icon for event type
+        function getEventIcon(type) {
+            switch(type) {
+                case 'alert': return '<i class="fas fa-triangle-exclamation"></i>';
+                case 'warning': return '<i class="fas fa-exclamation-circle"></i>';
+                case 'success': return '<i class="fas fa-check-circle"></i>';
+                default: return '<i class="fas fa-info-circle"></i>';
+            }
+        }
+
+        // Test alert
+        async function testAlert() {
+            try {
+                const response = await fetch('/api/test_alert');
+                const data = await response.json();
+                console.log('Test alert:', data);
+                fetchStatus();
+            } catch (error) {
+                console.error('Error triggering test alert:', error);
+            }
+        }
+
+        // Refresh status manually
+        function refreshStatus() {
+            fetchStatus();
+        }
+
+        // Clear events (client-side only)
+        function clearEvents() {
+            const eventLog = document.getElementById('event-log');
+            eventLog.innerHTML = `
+                <div class="event-placeholder">
+                    <i class="fas fa-clock-rotate-left"></i>
+                    <p>Events cleared</p>
+                </div>
+            `;
+        }
+
+        // Initial fetch and periodic updates
+        fetchStatus();
+        setInterval(fetchStatus, 2000);  // Update every 2 seconds
+    </script>
+</body>
+</html>

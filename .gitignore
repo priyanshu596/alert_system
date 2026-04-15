@@ -1,0 +1,30 @@
+# Virtual environment
+venv/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Models
+*.pt
+
+# Recordings and snapshots
+recordings/
+snapshots/*
+# We want to keep a couple of snapshots for the README
+!snapshots/alert_20260415_001836.jpg
+!snapshots/alert_20260415_001857.jpg
+
+# Video and compressed files
+*.mkv
+*.mp4
+*.avi
+*.tar.gz
+first_frame.jpg
+frame_end.jpg
+frame_third.jpg
+frame_twothird.jpg
+
+# User data
+.qwen/
