@@ -5,6 +5,7 @@ detector.py - YOLOv8 Person Detection with Zone-based Intrusion Detection
 import cv2
 import time
 import numpy as np
+import torch
 from ultralytics import YOLO
 
 
@@ -12,9 +13,11 @@ class PersonDetector:
     PERSON_CLASS_ID = 0
 
     def __init__(self, model_path="yolov8n.pt"):
-        print(f"[Detector] Loading YOLOv8 model: {model_path}...")
-        self.model = YOLO(model_path)
-        print("[Detector] Model loaded!")
+        # Automatically select device (CUDA if available, else CPU)
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        print(f"[Detector] Loading YOLOv8 model: {model_path} on {self.device}...")
+        self.model = YOLO(model_path).to(self.device)
+        print(f"[Detector] Model loaded on {self.device}!")
         self.prev_time = 0
         self.fps = 0
         self.zone = []
@@ -44,16 +47,28 @@ class PersonDetector:
         delta = current_time - self.prev_time
         self.prev_time = current_time
         if delta > 0:
-            self.fps = 1 / delta
+            # Simple EMA for smoother FPS display
+            new_fps = 1 / delta
+            self.fps = 0.9 * self.fps + 0.1 * new_fps if self.fps > 0 else new_fps
         return self.fps
 
     def process_frame(self, frame):
         alert_triggered = False
         detections = []
 
-        # Lower confidence for better recall
-        results = self.model(frame, verbose=False, conf=0.8)
-        frame_height, frame_width = frame.shape[:2]
+        # Optimization: Resize frame for faster inference if it's too large
+        h, w = frame.shape[:2]
+        if w > 640:
+            inference_frame = cv2.resize(frame, (640, int(640 * h / w)))
+        else:
+            inference_frame = frame
+
+        # Inference - lower confidence for better recall, use half precision on GPU
+        results = self.model(inference_frame, verbose=False, conf=0.5, device=self.device, half=(self.device == "cuda"))
+        
+        # Scaling factor for bboxes if we resized
+        scale_x = w / inference_frame.shape[1]
+        scale_y = h / inference_frame.shape[0]
 
         for result in results:
             for box in result.boxes:
@@ -62,8 +77,12 @@ class PersonDetector:
                 if cls_id != self.PERSON_CLASS_ID:
                     continue
 
-                x1, y1, x2, y2 = map(int, box.xyxy[0])
-                in_zone = self.is_person_in_zone((x1, y1, x2, y2), frame_height, frame_width)
+                # Scale boxes back to original frame size
+                x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
+                x1, x2 = int(x1 * scale_x), int(x2 * scale_x)
+                y1, y2 = int(y1 * scale_y), int(y2 * scale_y)
+                
+                in_zone = self.is_person_in_zone((x1, y1, x2, y2), h, w)
 
                 if in_zone:
                     alert_triggered = True
@@ -85,7 +104,7 @@ class PersonDetector:
                 cv2.putText(frame, label, (x1, y1 - 6),
                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
 
-        # Draw restricted zone (small polygon near shutter)
+        # Draw restricted zone
         if self.zone_set:
             cv2.polylines(frame, [self.zone], True, (0, 0, 255), 2)
             overlay = frame.copy()
@@ -97,22 +116,9 @@ class PersonDetector:
         cv2.putText(frame, f"FPS: {fps:.1f}", (10, 30),
                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
 
-        # LIVE indicator (blinking red)
+        # LIVE indicator
         live_color = (0, 0, 255) if int(time.time() * 2) % 2 == 0 else (0, 0, 150)
-        cv2.putText(frame, "[LIVE]", (frame_width - 100, 30),
+        cv2.putText(frame, "[LIVE]", (w - 100, 30),
                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, live_color, 2)
-
-        # Alert banner (centered)
-        if alert_triggered:
-            text = "ALERT: PERSON NEAR SHUTTER"
-            font = cv2.FONT_HERSHEY_SIMPLEX
-            scale = 0.65
-            thick = 2
-            tw, th = cv2.getTextSize(text, font, scale, thick)[0]
-            tx = (frame_width - tw) // 2
-            ty = 50
-            cv2.rectangle(frame, (tx - 8, ty - th - 8), (tx + tw + 8, ty + 8), (0, 0, 0), -1)
-            cv2.rectangle(frame, (tx - 8, ty - th - 8), (tx + tw + 8, ty + 8), (0, 0, 255), 2)
-            cv2.putText(frame, text, (tx, ty - 3), font, scale, (0, 0, 255), thick)
 
         return frame, alert_triggered, detections

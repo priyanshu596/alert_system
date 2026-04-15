@@ -64,6 +64,83 @@ def add_event(message, event_type="info"):
             event_log.pop()
 
 
+import os
+import cv2
+import time
+import threading
+import queue
+from datetime import datetime
+from flask import Flask, render_template, Response, jsonify
+
+from detector import PersonDetector
+from alert import AlertManager
+
+# ---------------------------------------------------------------------------
+# Flask Application Setup
+# ---------------------------------------------------------------------------
+app = Flask(__name__, static_folder="static", static_url_path="/static")
+
+# Serve snapshots directory
+from flask import send_from_directory
+
+@app.route("/snapshots/<filename>")
+def serve_snapshot(filename):
+    return send_from_directory("snapshots", filename)
+
+# ---------------------------------------------------------------------------
+# Configuration
+# ---------------------------------------------------------------------------
+VIDEO_SOURCE = os.getenv("VIDEO_SOURCE", "test.mp4")
+VIDEO_SOURCE = int(VIDEO_SOURCE) if VIDEO_SOURCE.isdigit() else VIDEO_SOURCE
+
+# Small restricted zone right at the shutter entrance (848×478 frame)
+# Tight area: only the ground directly in front of the shutter door
+DEFAULT_ZONE = [(600, 280), (848, 280), (848, 478), (600, 478)]
+
+# ---------------------------------------------------------------------------
+# Global State
+# ---------------------------------------------------------------------------
+current_frame = None
+alert_active = False
+event_log = []
+system_running = True
+fps_display = 0
+detector_ready = False
+
+frame_lock = threading.Lock()
+log_lock = threading.Lock()
+recording_queue = queue.Queue(maxsize=100)
+
+# ---------------------------------------------------------------------------
+# Initialize Components
+# ---------------------------------------------------------------------------
+alert_manager = AlertManager(cooldown_seconds=20, snapshots_dir="snapshots")
+
+detector = None
+
+
+def add_event(message, event_type="info"):
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    event = {"timestamp": timestamp, "message": message, "type": event_type}
+    with log_lock:
+        event_log.insert(0, event)
+        if len(event_log) > 100:
+            event_log.pop()
+
+
+def recording_worker(filepath, fourcc, fps, width, height):
+    print(f"[Recorder] Starting recording to {filepath}")
+    recorder = cv2.VideoWriter(filepath, fourcc, fps, (width, height))
+    while system_running or not recording_queue.empty():
+        try:
+            frame = recording_queue.get(timeout=1)
+            recorder.write(frame)
+        except queue.Empty:
+            continue
+    recorder.release()
+    print(f"[Recorder] Finished recording to {filepath}")
+
+
 def video_processing_loop():
     global current_frame, alert_active, fps_display, detector_ready, system_running
 
@@ -88,7 +165,7 @@ def video_processing_loop():
     add_event(f"Video source opened: {VIDEO_SOURCE}", "success")
     add_event("System monitoring ACTIVE", "success")
 
-    # --- Dashboard video recorder ---
+    # --- Dashboard video recorder thread ---
     recordings_dir = "recordings"
     os.makedirs(recordings_dir, exist_ok=True)
     rec_filename = f"dashboard_{datetime.now().strftime('%Y%m%d_%H%M%S')}.avi"
@@ -98,11 +175,18 @@ def video_processing_loop():
     out_fps = 20
     frame_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)) or 848
     frame_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) or 478
-    recorder = cv2.VideoWriter(rec_filepath, fourcc, out_fps, (frame_w, frame_h))
+    
+    rec_thread = threading.Thread(
+        target=recording_worker, 
+        args=(rec_filepath, fourcc, out_fps, frame_w, frame_h),
+        daemon=True
+    )
+    rec_thread.start()
     add_event(f"Recording: {rec_filename}", "info")
 
     frame_count = 0
-
+    skip_frames = 1 # Process every 2nd frame to boost FPS if on CPU
+    
     while system_running:
         ret, frame = cap.read()
         if not ret:
@@ -117,40 +201,39 @@ def video_processing_loop():
         if frame.shape[1] != frame_w or frame.shape[0] != frame_h:
             frame = cv2.resize(frame, (frame_w, frame_h))
 
-        processed_frame, alert_triggered, detections = detector.process_frame(frame)
+        # Frame skipping for performance
+        if frame_count % (skip_frames + 1) == 0:
+            processed_frame, alert_triggered, detections = detector.process_frame(frame)
+            
+            # Queue for recording without blocking
+            if not recording_queue.full():
+                recording_queue.put(processed_frame)
 
-        # Record every frame
-        if recorder.isOpened():
-            recorder.write(processed_frame)
+            if alert_triggered:
+                if alert_manager.trigger_alert(processed_frame):
+                    alert_active = True
+                    add_event("⚠ PERSON NEAR SHUTTER — ALERT!", "alert")
+                    add_event("Screenshot + image sent to Telegram", "warning")
 
-        if alert_triggered:
-            if alert_manager.trigger_alert(processed_frame):
-                alert_active = True
-                add_event("⚠ PERSON NEAR SHUTTER — ALERT!", "alert")
-                add_event("Screenshot + image sent to Telegram", "warning")
-
-                def reset_alert():
-                    global alert_active
-                    time.sleep(5)
-                    alert_active = False
-                threading.Thread(target=reset_alert, daemon=True).start()
+                    def reset_alert():
+                        global alert_active
+                        time.sleep(5)
+                        alert_active = False
+                    threading.Thread(target=reset_alert, daemon=True).start()
+                else:
+                    if frame_count % 60 == 0:
+                        add_event("Person in zone — cooldown active", "info")
             else:
-                frame_count += 1
-                if frame_count % 60 == 0:
-                    add_event("Person in zone — cooldown active", "info")
-        else:
-            frame_count += 1
-            if frame_count % 90 == 0 and detections:
-                add_event(f"Person detected (safe): {len(detections)}", "info")
+                if frame_count % 90 == 0 and detections:
+                    add_event(f"Person detected (safe): {len(detections)}", "info")
 
-        fps_display = detector.fps
+            fps_display = detector.fps
 
-        with frame_lock:
-            current_frame = processed_frame.copy()
+            with frame_lock:
+                current_frame = processed_frame.copy()
+        
+        frame_count += 1
 
-    if recorder.isOpened():
-        recorder.release()
-        add_event(f"Recording saved: {rec_filepath}", "success")
     cap.release()
 
 
