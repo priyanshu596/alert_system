@@ -63,8 +63,8 @@ class PersonDetector:
         else:
             inference_frame = frame
 
-        # Inference - lower confidence for better recall, use half precision on GPU
-        results = self.model(inference_frame, verbose=False, conf=0.5, device=self.device, half=(self.device == "cuda"))
+        # Inference - keep confidence >= 0.6 as requested, use half precision on GPU
+        results = self.model(inference_frame, verbose=False, conf=0.6, device=self.device, half=(self.device == "cuda"))
         
         # Scaling factor for bboxes if we resized
         scale_x = w / inference_frame.shape[1]
